@@ -6,113 +6,90 @@ import PlaygroundSupport
 
 class StockPriceChartView: UIView {
 
-    var highestPrice: CGFloat = 0
-    var lowestPrice: CGFloat = 0
-    var timeSerieses: [TimeSeries] = []
-    var stockPricePath: UIBezierPath?
-    var stockPriceFillPath: UIBezierPath?
+    let stockPriceChart: StockPriceChart
 
-    var marketOpenTime: Date? {
-        let dateComponents = DateComponents(
-                                        year: 2020,
-                                            month: 12,
-                                            day: 4,
-                                            hour: 9,
-                                            minute: 30)
-        return Calendar.current.date(from: dateComponents)
-    }
+    var stockPriceLineLayer: CAShapeLayer = {
+        let layer = CAShapeLayer()
+        layer.fillColor = UIColor.clear.cgColor
+        layer.strokeColor = UIColor.systemBlue.cgColor
+        layer.lineWidth = 1
+        return layer
+    }()
 
-    var marketCloseTime: Date? {
-        let dateComponents = DateComponents(year: 2020,
-                                            month: 12,
-                                            day: 4,
-                                            hour: 16,
-                                            minute: 0)
-        return Calendar.current.date(from: dateComponents)
-    }
+    var stockPriceGradientLayer: CAGradientLayer = {
+        let layer = CAGradientLayer()
+        layer.colors = [UIColor.systemBlue.cgColor, UIColor.clear.cgColor]
+        return layer
+    }()
 
-    init(timeSerieses: [TimeSeries]) {
+    var stockPriceMaskLayer: CAShapeLayer = {
+        let layer = CAShapeLayer()
+        return layer
+    }()
+
+    init(stockPriceChart: StockPriceChart) {
+        self.stockPriceChart = stockPriceChart
         super.init(frame: .zero)
 
-        self.timeSerieses = timeSerieses
-        let openPrices = timeSerieses.compactMap { $0.open }
-        if let highestString = openPrices.max(), let highest = Float(highestString) {
-            highestPrice = CGFloat(highest)
-        }
-        if let lowestString = openPrices.min(), let lowest = Float(lowestString) {
-            lowestPrice = CGFloat(lowest)
-        }
-
         backgroundColor = .systemBackground
+
+        stockPriceGradientLayer.mask = stockPriceMaskLayer
+        layer.addSublayer(stockPriceGradientLayer)
+        layer.addSublayer(stockPriceLineLayer)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    override func layoutSublayers(of layer: CALayer) {
+        super.layoutSublayers(of: layer)
 
-        stockPriceShapeLayer()
+        setPathsToLayers()
+        stockPriceGradientLayer.frame = bounds
     }
 
-    private func stockPriceShapeLayer() {
-        createStockPricePath()
-
-        guard let stockPricePath = stockPricePath else { return }
-        let shapeLayer = CAShapeLayer()
-        shapeLayer.path = stockPricePath.cgPath
-        shapeLayer.fillColor = UIColor.clear.cgColor
-        shapeLayer.strokeColor = UIColor.systemBlue.cgColor
-        shapeLayer.lineWidth = 1
-        layer.addSublayer(shapeLayer)
-
-        guard let stockFillPath = stockPriceFillPath else { return }
-        let gradientLayer = CAGradientLayer()
-        let maskLayer = CAShapeLayer()
-        maskLayer.path = stockFillPath.cgPath
-        gradientLayer.colors = [UIColor.systemBlue.cgColor, UIColor.clear.cgColor]
-        gradientLayer.mask = maskLayer
-        layer.addSublayer(gradientLayer)
-        gradientLayer.frame = bounds
+    private func setPathsToLayers() {
+        let linePath = stockPriceLinePath()
+        let fillPath = stockPriceFillPath(stockPriceLinePath: linePath)
+        stockPriceLineLayer.path = linePath.cgPath
+        stockPriceMaskLayer.path = fillPath.cgPath
     }
 
-    private func createStockPricePath() {
-        stockPricePath = UIBezierPath()
-        guard let stockPricePath = stockPricePath else {
-            return
-        }
-        guard let openToday = marketOpenTime,
-              let closeToday = marketCloseTime else {
-            return
+    func stockPriceLinePath() -> UIBezierPath {
+        let path = UIBezierPath()
+        guard let openToday = stockPriceChart.marketOpenTime,
+              let closeToday = stockPriceChart.marketCloseTime else {
+            return UIBezierPath()
         }
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         var isFirst = true
-        for timeSeries in timeSerieses {
+        for timeSeries in stockPriceChart.timeSerieses {
             let time = dateFormatter.date(from: timeSeries.time)
             if let time = time, time >= openToday, time <= closeToday {
-                let xCoordinate = CGFloat(time.timeIntervalSince(openToday) / 60) * xDivision(open: marketOpenTime,
-                                                                                         close: marketCloseTime)
-                let yCoordinate = frame.height - ((CGFloat(Float(timeSeries.open) ?? 0) - lowestPrice) * yDivision(highestPrice: highestPrice,
-                                                                                                              lowestPrice: lowestPrice))
+                let xCoordinate = CGFloat(time.timeIntervalSince(openToday) / 60) * xDivision(open: openToday, close: closeToday)
+                let yCoordinate = frame.height - ((CGFloat(Float(timeSeries.open) ?? 0) - stockPriceChart.lowestPrice) * yDivision(highestPrice: stockPriceChart.highestPrice, lowestPrice: stockPriceChart.lowestPrice))
                 if isFirst {
-                    stockPricePath.move(to: CGPoint(x: xCoordinate, y: yCoordinate))
+                    path.move(to: CGPoint(x: xCoordinate, y: yCoordinate))
+                    isFirst = false
                 } else {
-                    stockPricePath.addLine(to: CGPoint(x: xCoordinate, y: yCoordinate))
+                    path.addLine(to: CGPoint(x: xCoordinate, y: yCoordinate))
                 }
-                isFirst = false
             }
         }
-        createStockPriceFill(stockPricePath)
+        return path
     }
 
-    private func createStockPriceFill(_ path: UIBezierPath) {
-        stockPriceFillPath = path.copy() as? UIBezierPath
-        guard let stockPriceFillPath = stockPriceFillPath else { return }
-        stockPriceFillPath.addLine(to: CGPoint(x: stockPriceFillPath.currentPoint.x, y: frame.height))
-        stockPriceFillPath.addLine(to: CGPoint(x: 0, y: frame.height))
-        stockPriceFillPath.close()
+    private func stockPriceFillPath(stockPriceLinePath: UIBezierPath) -> UIBezierPath {
+        let path = stockPriceLinePath.copy() as? UIBezierPath
+        guard let fillPath = path else {
+            return UIBezierPath()
+        }
+        fillPath.addLine(to: CGPoint(x: fillPath.currentPoint.x, y: frame.height))
+        fillPath.addLine(to: CGPoint(x: 0, y: frame.height))
+        fillPath.close()
+        return fillPath
     }
 
     private func xDivision(open: Date?, close: Date?) -> CGFloat {
@@ -129,7 +106,121 @@ class StockPriceChartView: UIView {
 }
 
 
+class StockPriceChart {
+
+    var highestPrice: CGFloat = 0
+    var lowestPrice: CGFloat = 0
+    var timeSerieses: [TimeSeries] = []
+
+    var marketOpenTime: Date? {
+        let dateComponents = DateComponents(year: 2020,
+                                            month: 12,
+                                            day: 4,
+                                            hour: 9,
+                                            minute: 30)
+        return Calendar.current.date(from: dateComponents)
+    }
+
+    var marketCloseTime: Date? {
+        let dateComponents = DateComponents(year: 2020,
+                                            month: 12,
+                                            day: 4,
+                                            hour: 16,
+                                            minute: 0)
+        return Calendar.current.date(from: dateComponents)
+    }
+
+    init(jsonString: String) {
+        let decoded = try! JSONDecoder().decode(TimeSeriesContainer.self, from: Data(jsonString.utf8))
+        timeSerieses = decoded.timeSeries5min.array.sorted { $0.time < $1.time }
+
+        let openPrices = timeSerieses.compactMap { $0.open }
+        if let highestString = openPrices.max(), let highest = Float(highestString) {
+            highestPrice = CGFloat(highest)
+        }
+        if let lowestString = openPrices.min(), let lowest = Float(lowestString) {
+            lowestPrice = CGFloat(lowest)
+        }
+    }
+
+}
+
+
 // Present the view controller in the Live View window
+
+
+struct DecodedArray<T: Decodable>: Decodable {
+
+    typealias DecodedArrayType = [T]
+     var array: DecodedArrayType
+
+    private struct DynamicCodingKeys: CodingKey {
+
+        var stringValue: String
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        var intValue: Int?
+        init?(intValue: Int) {
+            return nil
+        }
+
+    }
+
+    init(from decoder: Decoder) throws {
+
+        let container = try decoder.container(keyedBy: DynamicCodingKeys.self)
+        var tempArray: DecodedArrayType = []
+        for key in container.allKeys {
+            let decodedObject = try container.decode(T.self, forKey: DynamicCodingKeys(stringValue: key.stringValue)!)
+            tempArray.append(decodedObject)
+        }
+        array = tempArray
+
+    }
+}
+struct TimeSeriesContainer: Decodable {
+
+    let timeSeries5min: DecodedArray<TimeSeries>
+
+    enum CodingKeys: String, CodingKey {
+        case timeSeries5min = "Time Series (5min)"
+    }
+}
+struct TimeSeries: Decodable {
+
+    let open: String
+    let high: String
+    let low: String
+    let close: String
+    let volume: String
+
+    let time: String
+
+    enum CodingKeys: String, CodingKey {
+        case open = "1. open"
+        case high = "2. high"
+        case low = "3. low"
+        case close = "4. close"
+        case volume = "5. volume"
+        case time
+    }
+
+    init(from decoder: Decoder) throws {
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        open = try container.decode(String.self, forKey: CodingKeys.open)
+        high = try container.decode(String.self, forKey: CodingKeys.high)
+        low = try container.decode(String.self, forKey: CodingKeys.low)
+        close = try container.decode(String.self, forKey: CodingKeys.close)
+        volume = try container.decode(String.self, forKey: CodingKeys.volume)
+
+        time = container.codingPath[1].stringValue
+    }
+
+}
 
 var jsonString: String { """
 {
@@ -852,82 +943,8 @@ var jsonString: String { """
     }
 }
 """}
-struct DecodedArray<T: Decodable>: Decodable {
-
-    typealias DecodedArrayType = [T]
-     var array: DecodedArrayType
-
-    private struct DynamicCodingKeys: CodingKey {
-
-        var stringValue: String
-        init?(stringValue: String) {
-            self.stringValue = stringValue
-        }
-
-        var intValue: Int?
-        init?(intValue: Int) {
-            return nil
-        }
-
-    }
-
-    init(from decoder: Decoder) throws {
-
-        let container = try decoder.container(keyedBy: DynamicCodingKeys.self)
-        var tempArray: DecodedArrayType = []
-        for key in container.allKeys {
-            let decodedObject = try container.decode(T.self, forKey: DynamicCodingKeys(stringValue: key.stringValue)!)
-            tempArray.append(decodedObject)
-        }
-        array = tempArray
-
-    }
-}
-struct TimeSeriesContainer: Decodable {
-
-    let timeSeries5min: DecodedArray<TimeSeries>
-
-    enum CodingKeys: String, CodingKey {
-        case timeSeries5min = "Time Series (5min)"
-    }
-}
-struct TimeSeries: Decodable {
-
-    let open: String
-    let high: String
-    let low: String
-    let close: String
-    let volume: String
-
-    let time: String
-
-    enum CodingKeys: String, CodingKey {
-        case open = "1. open"
-        case high = "2. high"
-        case low = "3. low"
-        case close = "4. close"
-        case volume = "5. volume"
-        case time
-    }
-
-    init(from decoder: Decoder) throws {
-
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        open = try container.decode(String.self, forKey: CodingKeys.open)
-        high = try container.decode(String.self, forKey: CodingKeys.high)
-        low = try container.decode(String.self, forKey: CodingKeys.low)
-        close = try container.decode(String.self, forKey: CodingKeys.close)
-        volume = try container.decode(String.self, forKey: CodingKeys.volume)
-
-        time = container.codingPath[1].stringValue
-    }
-
-}
-let jsonData = Data(jsonString.utf8)
-let decoded = try! JSONDecoder().decode(TimeSeriesContainer.self, from: jsonData)
-var timeSerieses = decoded.timeSeries5min.array.sorted { $0.time < $1.time }
-let view = StockPriceChartView(timeSerieses: timeSerieses)
+let stockPriceChart = StockPriceChart(jsonString: jsonString)
+let view = StockPriceChartView(stockPriceChart: stockPriceChart)
 view.frame = CGRect(x: 0, y: 0, width: 390, height: 844 / 3)
 
 PlaygroundPage.current.liveView = view
