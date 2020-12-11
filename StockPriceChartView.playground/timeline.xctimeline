@@ -2,10 +2,5 @@
 <Timeline
    version = "3.0">
    <TimelineItems>
-      <LoggerValueHistoryTimelineItem
-         documentLocation = "file:///Users/kenichifujita/Documents/MyProject/StockPriceChartView/StockPriceChartView.playground#CharacterRangeLen=9&amp;CharacterRangeLoc=6369&amp;EndingColumnNumber=22&amp;EndingLineNumber=175&amp;StartingColumnNumber=13&amp;StartingLineNumber=175&amp;Timestamp=629333050.000246"
-         selectedRepresentationIndex = "0"
-         shouldTrackSuperviewWidth = "NO">
-      </LoggerValueHistoryTimelineItem>
    </TimelineItems>
 </Timeline>

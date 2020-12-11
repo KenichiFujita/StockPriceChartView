@@ -8,11 +8,24 @@ class StockPriceChartView: UIView {
 
     let stockPriceChart: StockPriceChart
 
-    var stockPriceLinePath: UIBezierPath?
-    var stockPriceFillPath: UIBezierPath?
-    var stockPriceLineLayer: CAShapeLayer?
-    var stockPriceGradientLayer: CAGradientLayer?
-    var stockPriceMaskLayer: CAShapeLayer?
+    var stockPriceLineLayer: CAShapeLayer = {
+        let layer = CAShapeLayer()
+        layer.fillColor = UIColor.clear.cgColor
+        layer.strokeColor = UIColor.systemBlue.cgColor
+        layer.lineWidth = 1
+        return layer
+    }()
+
+    var stockPriceGradientLayer: CAGradientLayer = {
+        let layer = CAGradientLayer()
+        layer.colors = [UIColor.systemBlue.cgColor, UIColor.clear.cgColor]
+        return layer
+    }()
+
+    var stockPriceMaskLayer: CAShapeLayer = {
+        let layer = CAShapeLayer()
+        return layer
+    }()
 
     init(stockPriceChart: StockPriceChart) {
         self.stockPriceChart = stockPriceChart
@@ -20,21 +33,9 @@ class StockPriceChartView: UIView {
 
         backgroundColor = .systemBackground
 
-        stockPriceLineLayer = CAShapeLayer()
-        stockPriceLineLayer?.fillColor = UIColor.clear.cgColor
-        stockPriceLineLayer?.strokeColor = UIColor.systemBlue.cgColor
-        stockPriceLineLayer?.lineWidth = 1
-
-        stockPriceGradientLayer = CAGradientLayer()
-        stockPriceMaskLayer = CAShapeLayer()
-        stockPriceGradientLayer?.colors = [UIColor.systemBlue.cgColor, UIColor.clear.cgColor]
-        stockPriceGradientLayer?.mask = stockPriceMaskLayer
-
-        if let stockPriceLineLayer = stockPriceLineLayer,
-           let stockPriceGradientLayer = stockPriceGradientLayer {
-            layer.addSublayer(stockPriceGradientLayer)
-            layer.addSublayer(stockPriceLineLayer)
-        }
+        stockPriceGradientLayer.mask = stockPriceMaskLayer
+        layer.addSublayer(stockPriceGradientLayer)
+        layer.addSublayer(stockPriceLineLayer)
     }
 
     required init?(coder: NSCoder) {
@@ -44,27 +45,23 @@ class StockPriceChartView: UIView {
     override func layoutSublayers(of layer: CALayer) {
         super.layoutSublayers(of: layer)
 
-        drawStockPriceLinePath()
-        drawStockPriceFillPath()
         setPathsToLayers()
-        stockPriceGradientLayer?.frame = bounds
+        stockPriceGradientLayer.frame = bounds
     }
 
     private func setPathsToLayers() {
-        guard let stockPriceLineLayer = stockPriceLineLayer,
-              let stockPriceLinePath = stockPriceLinePath else { return }
-        stockPriceLineLayer.path = stockPriceLinePath.cgPath
-
-        guard let stockPriceMaskLayer = stockPriceMaskLayer,
-              let stockPriceFillPath = stockPriceFillPath else { return }
-        stockPriceMaskLayer.path = stockPriceFillPath.cgPath
+        let linePath = stockPriceLinePath()
+        let fillPath = stockPriceFillPath(stockPriceLinePath: linePath)
+        stockPriceLineLayer.path = linePath.cgPath
+        stockPriceMaskLayer.path = fillPath.cgPath
     }
 
-    private func drawStockPriceLinePath() {
-        stockPriceLinePath = UIBezierPath()
-        guard let stockPricePath = stockPriceLinePath,
-              let openToday = stockPriceChart.marketOpenTime,
-              let closeToday = stockPriceChart.marketCloseTime else { return }
+    func stockPriceLinePath() -> UIBezierPath {
+        let path = UIBezierPath()
+        guard let openToday = stockPriceChart.marketOpenTime,
+              let closeToday = stockPriceChart.marketCloseTime else {
+            return UIBezierPath()
+        }
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         var isFirst = true
@@ -74,21 +71,25 @@ class StockPriceChartView: UIView {
                 let xCoordinate = CGFloat(time.timeIntervalSince(openToday) / 60) * xDivision(open: openToday, close: closeToday)
                 let yCoordinate = frame.height - ((CGFloat(Float(timeSeries.open) ?? 0) - stockPriceChart.lowestPrice) * yDivision(highestPrice: stockPriceChart.highestPrice, lowestPrice: stockPriceChart.lowestPrice))
                 if isFirst {
-                    stockPricePath.move(to: CGPoint(x: xCoordinate, y: yCoordinate))
+                    path.move(to: CGPoint(x: xCoordinate, y: yCoordinate))
                     isFirst = false
                 } else {
-                    stockPricePath.addLine(to: CGPoint(x: xCoordinate, y: yCoordinate))
+                    path.addLine(to: CGPoint(x: xCoordinate, y: yCoordinate))
                 }
             }
         }
+        return path
     }
 
-    private func drawStockPriceFillPath() {
-        stockPriceFillPath = stockPriceLinePath?.copy() as? UIBezierPath
-        guard let stockPriceFillPath = stockPriceFillPath else { return }
-        stockPriceFillPath.addLine(to: CGPoint(x: stockPriceFillPath.currentPoint.x, y: frame.height))
-        stockPriceFillPath.addLine(to: CGPoint(x: 0, y: frame.height))
-        stockPriceFillPath.close()
+    private func stockPriceFillPath(stockPriceLinePath: UIBezierPath) -> UIBezierPath {
+        let path = stockPriceLinePath.copy() as? UIBezierPath
+        guard let fillPath = path else {
+            return UIBezierPath()
+        }
+        fillPath.addLine(to: CGPoint(x: fillPath.currentPoint.x, y: frame.height))
+        fillPath.addLine(to: CGPoint(x: 0, y: frame.height))
+        fillPath.close()
+        return fillPath
     }
 
     private func xDivision(open: Date?, close: Date?) -> CGFloat {
